@@ -1,32 +1,25 @@
-# main.py (Versi dengan Integrasi AI)
+# main.py (Versi Final dengan replicate.run)
 
 import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-
-# Impor library baru
-import google.generativeai as genai
+import replicate
 from dotenv import load_dotenv
 
-# 1. Muat environment variables dari file .env
+# Muat environment variables dari file .env
 load_dotenv()
 
-# Ambil API Key dan konfigurasikan Gemini API
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    raise ValueError("GEMINI_API_KEY tidak ditemukan di environment variables.")
-genai.configure(api_key=api_key)
+# Ambil API Token dari .env
+api_token = os.getenv("REPLICATE_API_TOKEN")
+if not api_token:
+    raise ValueError("REPLICATE_API_TOKEN tidak ditemukan di environment variables.")
 
-# Inisialisasi model Generative AI
-model = genai.GenerativeModel('gemini-2.5-pro')
-
-# --- Inisialisasi FastAPI App (sama seperti sebelumnya) ---
+# Inisialisasi FastAPI App
 app = FastAPI()
-origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,9 +29,6 @@ class ChatRequest(BaseModel):
     new_message: str
     chat_history: str | None = None
 
-# --- [SYSTEM PROMPT UNTUK "ECHO"] ---
-# 2. Gabungkan System Prompt, riwayat, dan pesan baru
-# Ini adalah "jiwa" dari AI Echo yang Anda definisikan sebelumnya.
 SYSTEM_PROMPT = """
 [AWAL DARI SYSTEM PROMPT]
 Peran & Persona:
@@ -64,38 +54,38 @@ Gunakan bahasa Indonesia yang santai, modern, dan manusiawi. Sapaan "kamu". Nada
 
 @app.post("/chat")
 async def handle_chat(request: ChatRequest):
-    """
-    Endpoint ini sekarang memanggil API Gemini untuk mendapatkan respons nyata.
-    """
     print(f"Menerima pesan: {request.new_message}")
 
-    # Gabungkan semua konteks menjadi satu prompt utuh
+    # Gabungkan semua konteks menjadi satu prompt utuh untuk model
     full_prompt = (
         f"{SYSTEM_PROMPT}\n\n"
-        f"[BAGIAN 2: RIWAYAT CHAT]\n{request.chat_history}\n\n"
-        f"[BAGIAN 3: PESAN BARU DARI PENGGUNA]\nUser: {request.new_message}\n"
+        f"Berikut adalah riwayat percakapan sebelumnya:\n{request.chat_history}\n\n"
+        f"Pesan baru dari pengguna:\nUser: {request.new_message}\n"
         f"AI:"
     )
 
     try:
-        # 3. Lakukan panggilan ke model AI
-        # Kita menggunakan generate_content_async karena ini adalah fungsi async
-        response = await model.generate_content_async(full_prompt)
+        # Gunakan model identifier yang spesifik dan teruji
+        model_identifier = "ibm-granite/granite-3.3-8b-instruct"
+        
+        input_data = {
+            "prompt": full_prompt,
+            "max_new_tokens": 512,
+        }
 
-        # 4. Ambil teks respons dan kembalikan dalam format JSON
-        ai_response_text = response.text
-        print(f"Mengirim respons AI: {ai_response_text}")
-        return {"response": ai_response_text}
+        # Panggil replicate.run() seperti rencana awalmu
+        output = replicate.run(model_identifier, input=input_data)
+        
+        # Gabungkan iterator menjadi satu string tunggal
+        ai_response_text = "".join(output)
+
+        print(f"Mengirim respons AI: {ai_response_text.strip()}")
+        return {"response": ai_response_text.strip()}
 
     except Exception as e:
-        # Tangani jika ada error dari API
-        print("==========================================================")
-        print(f"!!! CRITICAL ERROR WHEN CALLING AI API !!!")
-        print(f"Error Type: {type(e)}")
-        print(f"Error Details: {e}")
-        print("==========================================================")
+        print(f"Terjadi error saat menghubungi Replicate: {e}")
         raise HTTPException(status_code=500, detail="Gagal menghasilkan respons dari AI.")
 
 @app.get("/")
 def read_root():
-    return {"status": "Server Echo (dengan AI) berjalan!"}
+    return {"status": "Server Echo (dengan Replicate AI) berjalan!"}
